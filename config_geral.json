@@ -1,0 +1,38 @@
+{
+  "id_cotacao": 107525,
+  "config_produto": {
+    "qtd_problema_de_minimo": 0,
+    "qtd_problema_de_embalagem": 0,
+    "oportunidades": 0,
+    "oportunidades_fixada": 0,
+    "produtos_sem_st": 0,
+    "so_com_st": 0,
+    "sem_estoque": false,
+    "cashback_4.2": {
+      "qtd_de_itens": null,
+      "porcentagem_cashback": null
+    },
+    "cashback_4.3": {
+      "qtd_de_itens": 0
+    }
+  },
+  "config_geral": {
+    "resposta_parcial_em_porcentagem": false,
+    "minimo_de_faturamento": null,
+    "aleatorizar_quantidade_respondida": false,
+    "multipla_resposta": {
+      "multipla": false,
+      "sem_resposta": 0
+    },
+    "quantidade_de_resposta_produto": null,
+    "atende": null,
+    "motivo_por_resposta": {
+      "quantos": 0,
+      "motivo": null,
+      "aguardando_resposta": 0
+    },
+    "versao_arquivo": {
+      "versao": "4.2"
+    }
+  }
+}
