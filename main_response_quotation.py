@@ -1,7 +1,7 @@
 import io
 import json
 import datetime
-from connect_db import conectar_ao_banco
+from database.connect_db import conectar_ao_banco
 from cotefacilib.utils.send_to_s3 import strategy, strategy_oficial
 from cotefacilib.utils.full_DTO import *
 
@@ -20,7 +20,7 @@ def randomizar_lista_porcentagem(porcentagem_minima, porcentagem_maxima, lista):
     return lista
 
 
-def produtos_dto(linha_result, problemas_prop, cursor_db):
+def produtos_dto(linha_result, problemas_prop, cursor_db, looping=0.0):
     id_rep = linha_result[0]
     cnpj_cliente = linha_result[1]
     id_cotacao_processar = linha_result[3]
@@ -39,73 +39,60 @@ def produtos_dto(linha_result, problemas_prop, cursor_db):
     oportunidades_fixada = problemas_prop["config_produto"]["oportunidades_fixada"]
     quantidade_de_resposta_produto = problemas_prop["config_geral"]["quantidade_de_resposta_produto"]
     atende = problemas_prop["config_geral"]["atende"]
-
     if problemas_prop["config_geral"]["versao_arquivo"]["versao"] == '4.2':
         cashBackQuantidade = problemas_prop["config_produto"]['cashback_4.2']['qtd_de_itens']
         cashBackDesconto = problemas_prop["config_produto"]['cashback_4.2']['porcentagem_cashback']
     else:
         cashBackQuantidade = problemas_prop["config_produto"]['cashback_4.3']['qtd_de_itens']
         cashBackDesconto = 0
-
     saida_list = []
     random.shuffle(produtos)
     if resposta_parcial_em_porcentagem:
         produtos = randomizar_lista_porcentagem(10, 75, produtos)
     for produto in produtos:
         if not quantidade_de_resposta_produto:
-            codbarras = produto[0]
-            qtd_cotada = produto[1]
-            valor_historico = produto[2]
             if minimo > 0:
-                saida_json = itens_DTO(codbarras,
-                                       qtd_cotada,
-                                       valor_historico,
+                saida_json = itens_DTO(produto,
                                        qtd_problema_minimo=True,
                                        cashBack=cashBackDesconto)
                 minimo -= 1
             elif embalagem > 0:
-                saida_json = itens_DTO(codbarras,
-                                       qtd_cotada,
-                                       valor_historico,
+                saida_json = itens_DTO(produto,
                                        qtd_problema_embalagem=True,
                                        cashBack=cashBackDesconto)
                 embalagem -= 1
             elif sem_st > 0:
-                saida_json = itens_DTO(codbarras,
-                                       qtd_cotada,
-                                       valor_historico,
+                saida_json = itens_DTO(produto,
                                        qtd_sem_st=True,
                                        cashBack=cashBackDesconto)
                 sem_st -= 1
             elif com_st > 0:
-                saida_json = itens_DTO(codbarras, qtd_cotada, valor_historico, com_st=True, cashBack=cashBackDesconto)
+                saida_json = itens_DTO(produto, com_st=True, cashBack=cashBackDesconto)
                 com_st -= 1
             elif sem_estoque:
-                saida_json = itens_DTO(codbarras,
-                                       qtd_cotada,
-                                       valor_historico,
+                saida_json = itens_DTO(produto,
                                        sem_estoque=True,
                                        atende=atende,
                                        cashBack=cashBackDesconto)
             elif oportunidades > 0:
-                saida_json = itens_DTO(codbarras,
-                                       qtd_cotada,
-                                       valor_historico,
+                saida_json = itens_DTO(produto,
                                        oportunidades=True,
                                        cashBack=cashBackDesconto)
                 oportunidades -= 1
             elif oportunidades_fixada > 0:
-                saida_json = itens_DTO(codbarras,
-                                       qtd_cotada,
-                                       valor_historico,
+                saida_json = itens_DTO(produto,
                                        oportunidades_fixada=True,
                                        cashBack=cashBackDesconto)
                 oportunidades_fixada -= 1
             else:
-                saida_json = itens_DTO(codbarras,
-                                       qtd_cotada,
-                                       valor_historico,
-                                       cashBack=cashBackDesconto)
+                if looping:
+                    produto[2] = looping  # preco hardcoded para o caso de testes com looping
+                    saida_json = itens_DTO(produto,
+                                           cashBack=cashBackDesconto,
+                                           looping=True)
+                else:
+                    saida_json = itens_DTO(produto,
+                                           cashBack=cashBackDesconto)
             saida_list.append(saida_json)
         else:
             quantidade_de_resposta_produto -= 1
@@ -114,27 +101,29 @@ def produtos_dto(linha_result, problemas_prop, cursor_db):
     return saida_list
 
 
-def montarDTOmotivo(motivo, linha_result, conf, cursor, multipla):
+def montarDTOmotivo(motivo, linha_result, conf, cursor, multipla, vencido=False):
     versaoArquivo = conf["config_geral"]["versao_arquivo"]["versao"]
     minimo_de_faturamento = conf["config_geral"]["minimo_de_faturamento"]
-    if motivo != 'Sucesso':
-        list_dict_itens = []  # lista vazia, pois com motivos nao tem itens
-    else:  # se for sucesso o motivo
+    if motivo == 'Sucesso' or motivo == 'Vencido':  # se for sucesso o motivo
         if multipla:
             return getListMultipla(linha_result=linha_result,
                                    cursor_p=cursor,
                                    minimo_de_faturamento=minimo_de_faturamento,
                                    versaoArquivo=versaoArquivo,
-                                   conf=conf)
+                                   conf=conf,
+                                   vencido=vencido)
         else:
             list_dict_itens = produtos_dto(linha_result=linha_result, problemas_prop=conf, cursor_db=cursor)
             motivo = None  # por que para sucesso o full DTO ja seta a string sucesso como padrão
+    else:  # se nao for sucesso o motivo
+        list_dict_itens = []  # lista vazia, pois com motivos nao tem itens
     return full_DTO(linha_result=linha_result,
                     versaoArquivo=versaoArquivo,
                     list_dict_itens=list_dict_itens,
                     minimo=minimo_de_faturamento,
                     list_motivo=motivo,
-                    cursor=cursor)
+                    cursor=cursor,
+                    vencido=vencido)
 
 
 def progressBar(iterable, prefix='', suffix='', decimals=1, length=100, fill='█', printEnd="\r"):
@@ -159,16 +148,34 @@ def getListMultipla(linha_result,
                     conf,
                     minimo_de_faturamento,
                     versaoArquivo,
-                    cursor_p):
+                    cursor_p,
+                    vencido=False):
     saida_list = []
-    for num in range(1, random.randint(3, 7)):  # quantidade de multiplas por representante (10)
+    for num in range(1, random.randint(3, 7)):  # quantidade de multiplas por representante (7)
         saida_dto = full_DTO(linha_result=linha_result,
                              versaoArquivo=versaoArquivo,
                              list_dict_itens=produtos_dto(linha_result, conf, cursor_p),
                              minimo=minimo_de_faturamento,
-                             cursor=cursor_p)
+                             cursor=cursor_p,
+                             multipla=num,
+                             vencido=vencido)
         saida_list.append(saida_dto)
     saida_list = {"respostas": saida_list}
+    return saida_list
+
+
+def gerarDTOsLooping(result_ordenado, minimo_de_faturamento, multipla, conf, cursor_p):
+    saida_list = []
+    loop = 1
+    for linha_result in result_ordenado:
+        loop = float("{:.2f}".format(loop))
+        saida_dto = full_DTO(linha_result=linha_result,
+                             minimo=minimo_de_faturamento,
+                             multipla=multipla,
+                             list_dict_itens=produtos_dto(linha_result, conf, cursor_p, looping=loop),
+                             cursor=cursor_p)
+        saida_list.append(saida_dto)
+        loop += 0.10
     return saida_list
 
 
@@ -178,40 +185,58 @@ def gerarDTO(id_cotacao_processar, conf, cursor_p, multipla=False):
     motivo_quantidade = conf["config_geral"]["motivo_por_resposta"]["quantos"]
     motivo_fixo = conf["config_geral"]["motivo_por_resposta"]["motivo"]
     qtd_aguardando = conf["config_geral"]["motivo_por_resposta"]["aguardando_resposta"]
+    looping = conf['tipo_teste']['looping']
     logs(tipo=1, mensagem=logs(tipo=2) + ': Tentando consultar as informações no banco')
     result = consultar_respostas(cursor_p, id_cotacao_processar)
-    random.shuffle(result)  # aleatorizar lista
-    saida_list = []
-    logs(tipo=1, mensagem=logs(tipo=2) + ': Consulta no banco respondida com sucesso')
-    logs(tipo=1, mensagem=logs(tipo=2) + ': Inicio da montagem do DTO')
-    logs(tipo=1, mensagem=logs(tipo=2) + f': Quantidade de respostas validas > {len(result)}')
-    if qtd_aguardando:
-        for _ in range(0, qtd_aguardando):
-            result.pop(0)  # excluir linha do resultado para nao responder
-    if motivo_quantidade > len(result):
-        motivo_quantidade = len(result)
-    list_motivos = get_motivos(motivo_quantidade, motivo_fixo)
-    if list_motivos:
-        logs(tipo=1, mensagem=logs(tipo=2) + f': Quantidade de motivos alterados > {len(list_motivos)}')
-        for motivo in list_motivos:
-            saida_list.append(
-                montarDTOmotivo(motivo=motivo, linha_result=result[0], conf=conf, cursor=cursor_p, multipla=multipla))
-            result.pop(0)
-    logs(tipo=1, mensagem=logs(tipo=2) + ': Inicio do processamento de DTOs validos')
-    for linha_result in progressBar(result, prefix='Início:', suffix='Fim', length=50):
-        if multipla:
-            saida_list.append(getListMultipla(linha_result=linha_result,
-                                              conf=conf,
-                                              minimo_de_faturamento=minimo_de_faturamento,
-                                              versaoArquivo=versaoArquivo,
-                                              cursor_p=cursor_p))
-        else:
-            saida_dto = full_DTO(linha_result=linha_result,
-                                 versaoArquivo=versaoArquivo,
-                                 list_dict_itens=produtos_dto(linha_result, conf, cursor_p),
-                                 minimo=minimo_de_faturamento,
-                                 cursor=cursor_p)
-            saida_list.append(saida_dto)
+    if not looping:
+        random.shuffle(result)  # aleatorizar lista se não for para testar o looping
+    if looping:
+        logs(tipo=1, mensagem=logs(tipo=2) + ': Resposta gerada para testar looping, preços não correspondem ao banco')
+        saida_list = gerarDTOsLooping(result, minimo_de_faturamento, multipla, conf, cursor_p)
+    else:
+        saida_list = []
+        logs(tipo=1, mensagem=logs(tipo=2) + ': Consulta no banco respondida com sucesso')
+        logs(tipo=1, mensagem=logs(tipo=2) + ': Inicio da montagem do DTO')
+        logs(tipo=1, mensagem=logs(tipo=2) + f': Quantidade de respostas validas > {len(result)}')
+        if qtd_aguardando:
+            for _ in range(0, qtd_aguardando):
+                result.pop(0)  # excluir linha do resultado para nao responder
+        if motivo_quantidade > len(result):
+            motivo_quantidade = len(result)
+        list_motivos = get_motivos(motivo_quantidade, motivo_fixo)
+        if list_motivos:
+            logs(tipo=1, mensagem=logs(tipo=2) + f': Quantidade de motivos alterados > {len(list_motivos)}')
+            for motivo in list_motivos:
+                if motivo == "Vencido":
+                    saida_list.append(montarDTOmotivo(motivo=motivo,
+                                                      linha_result=result[0],
+                                                      conf=conf,
+                                                      cursor=cursor_p,
+                                                      multipla=multipla,
+                                                      vencido=True))
+                else:
+                    saida_list.append(
+                        montarDTOmotivo(motivo=motivo,
+                                        linha_result=result[0],
+                                        conf=conf,
+                                        cursor=cursor_p,
+                                        multipla=multipla))
+                result.pop(0)
+        logs(tipo=1, mensagem=logs(tipo=2) + ': Inicio do processamento de DTOs validos')
+        for linha_result in progressBar(result, prefix='Início:', suffix='Fim', length=50):
+            if multipla:
+                saida_list.append(getListMultipla(linha_result=linha_result,
+                                                  conf=conf,
+                                                  minimo_de_faturamento=minimo_de_faturamento,
+                                                  versaoArquivo=versaoArquivo,
+                                                  cursor_p=cursor_p))
+            else:
+                saida_dto = full_DTO(linha_result=linha_result,
+                                     versaoArquivo=versaoArquivo,
+                                     list_dict_itens=produtos_dto(linha_result, conf, cursor_p),
+                                     minimo=minimo_de_faturamento,
+                                     cursor=cursor_p)
+                saida_list.append(saida_dto)
     return saida_list
 
 
@@ -229,14 +254,20 @@ def aleatorizar_resposta_itens(dto):
         return dto
 
 
-def logs(tipo, mensagem=None):
+def logs(tipo, mensagem=None, amazon=False):
     if tipo == 1 and mensagem:
         print(mensagem)
     if tipo == 2:
-        data_hora_atual = datetime.datetime.now()
-        formato = "%Y-%m-%d %H:%M:%S"
-        data_hora_formatada = data_hora_atual.strftime(formato)
-        return data_hora_formatada
+        if not amazon:
+            data_hora_atual = datetime.datetime.now()
+            formato = "%Y-%m-%d %H:%M:%S"
+            data_hora_formatada = data_hora_atual.strftime(formato)
+            return data_hora_formatada
+        else:
+            data_hora_atual = datetime.datetime.now() - timedelta(hours=3)
+            formato = "%Y-%m-%d %H:%M:%S"
+            data_hora_formatada = data_hora_atual.strftime(formato)
+            return data_hora_formatada
     else:
         return None
 
@@ -244,18 +275,18 @@ def logs(tipo, mensagem=None):
 def gravarDTO(DTO, limpar=False):
     try:
         if limpar:
-            with io.open('DTO_processado.json', 'r', encoding='utf-8') as file:
+            with io.open('arquivos_config/DTO_processado.json', 'r', encoding='utf-8') as file:
                 lista_vazia = []
                 file.close()
-                with open('DTO_processado.json', 'w', encoding='utf-8') as f:
+                with open('arquivos_config/DTO_processado.json', 'w', encoding='utf-8') as f:
                     json.dump(lista_vazia, f, ensure_ascii=False)
                     f.close()
             return True
-        with io.open('DTO_processado.json', 'r', encoding='utf-8') as file:
+        with io.open('arquivos_config/DTO_processado.json', 'r', encoding='utf-8') as file:
             lista_atual = json.load(file)
             lista_atual.append(DTO)
             file.close()
-            with open('DTO_processado.json', 'w', encoding='utf-8') as f:
+            with open('arquivos_config/DTO_processado.json', 'w', encoding='utf-8') as f:
                 json.dump(lista_atual, f, ensure_ascii=False)
                 f.close()
         return True
@@ -305,6 +336,7 @@ def get_motivos(motivo_motivo, motivo_fixo=None):
         "Sucesso",
         "Sucesso",
         "Sucesso",
+        "Vencido",
         "Produtos não encontrados na base do fornecedor.",
         "Usuario e/ou senha invalido.",
         "Entre em contato com o suporte da Cotefacil atraves do chat ou por um de nossos telefones.",
@@ -334,7 +366,7 @@ def enviar_respostas(list_dtos, oficial):
             cnpj = dto['respostas'][0]['filiais'][0]["cnpj"]
             motivo = dto['respostas'][0]['filiais'][0]["motivo"]
             multipla_mensagem = ' > multipla resposta'
-        except Exception:  # tudo que nao for multipla cairá aqui
+        except:  # tudo que nao for multipla cairá aqui
             cnpj_fornecedor = dto['cnpjFornecedor']
             idrepresentante = dto['codigoRepresentante']
             cnpj = dto['filiais'][0]["cnpj"]
@@ -361,7 +393,7 @@ def motivoResposta(dto):
     return motivo
 
 
-def processar(config, oficial):
+def processar(config, oficial=False):
     logs(tipo=1, mensagem=logs(tipo=2) + ': Processamento de DTO iniciado >>>')
     logs(tipo=1, mensagem=logs(tipo=2) + ': Checando vencimento da cotação...')
     cursor_p = conectar_banco(oficial)
@@ -399,10 +431,10 @@ def abrirArquivo(nome):
 
 
 def main():
-    config_gerais = abrirArquivo('config_geral.json')
+    config_gerais = abrirArquivo('arquivos_config/config_geral.json')
     try:
-        gravarDTO(DTO=None, limpar=True)
-        processar(config_gerais, oficial=False)
+        gravarDTO(DTO=None, limpar=False)
+        processar(config_gerais)
     except Exception as Error:
         logs(tipo=1, mensagem='>>> Erro no processamento da mensagem ou parada forçada')
         print(Error)
