@@ -160,9 +160,9 @@ cython_debug/
 .idea/
 
 #me
-cotefacilib/
-/cotefacilib
-queries.py
-full_DTO.py
-DTO_processado.json
-fila.json
+#cotefacilib/
+#/cotefacilib
+#queries.py
+#full_DTO.py
+arquivos_config/*.json
+arquivos_config/!.example.json
