@@ -1,0 +1,7 @@
+sucesso = 'Processado'
+sucesso_fila = 'Solicitação de resposta enviada para a fila com sucesso'
+exception = 'bad request'
+sucesso_vencimento = 'vencimento alterado com sucesso'
+sucesso_excluir = 'dados de resposta da cotacao excluidos com sucesso'
+sucesso_enviado_fila = 'mensagem enviada com sucesso para a fila, em minutos será processado e respondido'
+sucesso_em_analise = 'cotacao alterada para em analise com sucesso'
